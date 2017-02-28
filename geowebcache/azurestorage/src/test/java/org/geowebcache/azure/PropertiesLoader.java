@@ -28,7 +28,7 @@ public class PropertiesLoader {
             try (InputStream in = new FileInputStream(configFile)) {
                 properties.load(in);
                 checkArgument(null != properties.getProperty("containerName"),
-                        "container not provided in config file " + configFile.getAbsolutePath());
+                        "containerName not provided in config file " + configFile.getAbsolutePath());
                 checkArgument(null != properties.getProperty("accountName"),
                         "accountName not provided in config file " + configFile.getAbsolutePath());
                 checkArgument(null != properties.getProperty("accountKey"),
