@@ -99,7 +99,7 @@ public class AzureBlobStoreConfig extends BlobStoreConfig {
         checkState(getId() != null);
         checkState(isEnabled(),
                 "Can't call AzureBlobStoreConfig.createInstance() is blob store is not enabled");
-        return new AzureBlobStore(this, layers, lockProvider);
+        return new AzureBlobStore(this, layers);
     }
 
     public CloudBlobClient buildClient() {

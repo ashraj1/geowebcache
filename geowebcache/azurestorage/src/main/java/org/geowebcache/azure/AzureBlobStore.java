@@ -1,47 +1,33 @@
 package org.geowebcache.azure;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.nio.channels.Channels;
-import java.nio.channels.WritableByteChannel;
-import java.util.*;
-
-import javax.annotation.Nullable;
-
 import com.google.common.base.Function;
 import com.google.common.base.Throwables;
 import com.google.common.collect.AbstractIterator;
 import com.google.common.collect.Iterators;
 import com.google.common.collect.Lists;
-import com.google.common.io.ByteStreams;
-import com.microsoft.azure.storage.blob.BlobInputStream;
-import com.microsoft.azure.storage.blob.BlobOutputStream;
+import com.microsoft.azure.storage.blob.BlobProperties;
 import com.microsoft.azure.storage.blob.CloudBlobClient;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.geowebcache.GeoWebCacheException;
 import org.geowebcache.io.ByteArrayResource;
 import org.geowebcache.io.Resource;
 import org.geowebcache.layer.TileLayerDispatcher;
-import org.geowebcache.locks.LockProvider;
-import org.geowebcache.mime.MimeException;
 import org.geowebcache.mime.MimeType;
-import org.geowebcache.storage.BlobStore;
-import org.geowebcache.storage.BlobStoreListener;
-import org.geowebcache.storage.BlobStoreListenerList;
-import org.geowebcache.storage.StorageException;
-import org.geowebcache.storage.TileObject;
-import org.geowebcache.storage.TileRange;
-import org.geowebcache.storage.TileRangeIterator;
+import org.geowebcache.storage.*;
 
+import javax.annotation.Nullable;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.nio.channels.Channels;
+import java.nio.channels.WritableByteChannel;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 
-/**
- * Created by jocollin on 27/02/2017.
- */
+import static com.google.common.base.Preconditions.checkNotNull;
+
 public class AzureBlobStore implements BlobStore {
 
     static Log log = LogFactory.getLog(AzureBlobStore.class);
@@ -58,8 +44,7 @@ public class AzureBlobStore implements BlobStore {
 
     private final AzureOps azureOps;
 
-    public AzureBlobStore(AzureBlobStoreConfig config, TileLayerDispatcher layers,
-                          LockProvider lockProvider) throws StorageException {
+    public AzureBlobStore(AzureBlobStoreConfig config, TileLayerDispatcher layers) throws StorageException {
         checkNotNull(config);
         checkNotNull(layers);
         checkNotNull(config.getAzureAccountName(), "Account name not provided");
@@ -71,7 +56,7 @@ public class AzureBlobStore implements BlobStore {
 
         conn = config.buildClient();
 
-        this.azureOps = new AzureOps(conn, containerName, keyBuilder, lockProvider);
+        this.azureOps = new AzureOps(conn, containerName, keyBuilder);
     }
 
     @Override
@@ -80,7 +65,7 @@ public class AzureBlobStore implements BlobStore {
         CloudBlobClient conn = this.conn;
         this.conn = null;
         if(conn != null) {
-            azureOps.shutDown();
+            azureOps.shutdown();
         }
     }
 
@@ -102,31 +87,44 @@ public class AzureBlobStore implements BlobStore {
 
         final String key = keyBuilder.forTile(obj);
 
-        String blobFormat = obj.getBlobFormat();
-        String mimeType;
-        try {
-            mimeType = MimeType.createFromFormat(blobFormat).getMimeType();
-        } catch (MimeException me) {
-            throw Throwables.propagate(me);
-        };
-        azureOps.getBlobProperties(key).setContentType(mimeType);
+        // don't bother for the extra call if there are no listeners
+        final boolean existed;
+        long originalLength = 0L;
+        if (listeners.isEmpty()) {
+            existed = false;
+        } else {
+            existed = azureOps.blobExists(key);
+            if(existed) {
+                originalLength = azureOps.getBlobProperties(key).getLength();
+            }
+        }
 
         final ByteArrayInputStream input = toByteArray(blob);
         log.trace(log.isTraceEnabled() ? ("Storing " + key) : "");
+
+        // Update object
         azureOps.putObject(input, blob.getSize(), key);
+
+        if (!listeners.isEmpty()) {
+            if (existed) {
+                listeners.sendTileUpdated(obj, originalLength);
+            } else {
+                listeners.sendTileStored(obj);
+            }
+        }
     }
 
     @Override
     public boolean get(TileObject obj) throws StorageException {
         final String key = keyBuilder.forTile(obj);
         try {
-             byte[] bytes = azureOps.getObject(key);
-             if(bytes == null) {
-                return false;
+             if(!azureOps.blobExists(key)) {
+                 return false;
              }
-                obj.setBlobSize(bytes.length);
-                obj.setBlob(new ByteArrayResource(bytes));
-                obj.setCreated(azureOps.getBlobProperties(key).getLastModified().getTime());
+             byte[] bytes = azureOps.getObject(key);
+             obj.setBlobSize(bytes.length);
+             obj.setBlob(new ByteArrayResource(bytes));
+             obj.setCreated(azureOps.getBlobProperties(key).getLastModified().getTime());
         } catch (IOException e) {
             throw new StorageException("Error getting " + key, e);
         }
@@ -210,16 +208,18 @@ public class AzureBlobStore implements BlobStore {
 
         azureOps.deleteObject(metadataKey);
 
-        boolean layerExists;
+        boolean layerDeleted;
         try {
-            layerExists = azureOps.scheduleAsyncDelete(layerPrefix);
-        } catch (GeoWebCacheException e) {
-            throw Throwables.propagate(e);
+            layerDeleted = azureOps.deleteBlobsWithMatchingPrefix(layerPrefix);
+        } catch(Exception ex) {
+            throw new StorageException(ex.getMessage());
         }
-        if (layerExists) {
+
+        // Notify listeners
+        if (layerDeleted) {
             listeners.sendLayerDeleted(layerName);
         }
-        return layerExists;
+        return layerDeleted;
     }
 
     @Override
@@ -230,20 +230,23 @@ public class AzureBlobStore implements BlobStore {
 
         final String gridsetPrefix = keyBuilder.forGridset(layerName, gridSetId);
 
-        boolean prefixExists;
+        boolean gridsetDeleted;
         try {
-            prefixExists = azureOps.scheduleAsyncDelete(gridsetPrefix);
-        } catch (GeoWebCacheException e) {
-            throw Throwables.propagate(e);
+            gridsetDeleted = azureOps.deleteBlobsWithMatchingPrefix(gridsetPrefix);
+        } catch (Exception ex) {
+            throw new StorageException(ex.getMessage());
         }
-        if (prefixExists) {
+
+        // Notify listeners
+        if (gridsetDeleted) {
             listeners.sendGridSubsetDeleted(layerName, gridSetId);
         }
-        return prefixExists;
+        return gridsetDeleted;
     }
 
     @Override
     public boolean delete(TileObject obj) throws StorageException {
+        boolean deleted = false;
         final String key = keyBuilder.forTile(obj);
 
         // don't bother for the extra call if there are no listeners
@@ -251,16 +254,16 @@ public class AzureBlobStore implements BlobStore {
             return azureOps.deleteObject(key);
         }
 
-        HashMap<String, String> oldObj = azureOps.getMetadata(key);
-
-        if (oldObj == null) {
+        if(!azureOps.blobExists(key)) {
             return false;
         }
 
-        azureOps.deleteObject(key);
-        obj.setBlobSize(Integer.parseInt(oldObj.get("Content-Length")));
+        BlobProperties props = azureOps.getBlobProperties(key);
+
+        deleted = azureOps.deleteObject(key);
+        obj.setBlobSize((int) props.getLength());
         listeners.sendTileDeleted(obj);
-        return true;
+        return deleted;
     }
 
     @Override
@@ -280,32 +283,32 @@ public class AzureBlobStore implements BlobStore {
     @Nullable
     @Override
     public String getLayerMetadata(String layerName, String key) {
-        Properties properties = getLayerMetadata(layerName);
-        String value = properties.getProperty(key);
+        HashMap<String, String> metadata = getLayerMetadata(layerName);
+        String value = metadata.get(key);
         return value;
     }
 
     @Override
     public void putLayerMetadata(String layerName, String key, String value) {
-        Properties properties = getLayerMetadata(layerName);
-        properties.setProperty(key, value);
+        HashMap<String, String> metadata = getLayerMetadata(layerName);
+        metadata.put(key, value);
         String resourceKey = keyBuilder.layerMetadata(layerName);
         try {
-            azureOps.putProperties(resourceKey, properties);
+            azureOps.putBlobMetadata(resourceKey, metadata);
         } catch (StorageException e) {
             Throwables.propagate(e);
         }
     }
 
-    private Properties getLayerMetadata(String layerName) {
+    private HashMap<String, String> getLayerMetadata(String layerName) {
         String key = keyBuilder.layerMetadata(layerName);
-        Properties props = null;
+        HashMap<String, String> metadata = null;
         try {
-            props = azureOps.getProperties(key);
+            metadata = azureOps.getBlobMetadata(key);
         } catch (Exception ex) {
             log.trace(ex.getMessage());
         }
-        return props;
+        return metadata;
     }
 
     @Override
