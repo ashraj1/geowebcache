@@ -27,8 +27,6 @@ public class AzureBlobStoreConfig extends BlobStoreConfig {
 
     private String container;
 
-    private String prefix;
-
     private String azureAccountName;
 
     private String azureAccountKey;
@@ -39,14 +37,6 @@ public class AzureBlobStoreConfig extends BlobStoreConfig {
 
     public void setContainer(String container) {
         this.container = container;
-    }
-
-    public String getPrefix() {
-        return this.prefix;
-    }
-
-    public void setPrefix(String prefix) {
-        this.prefix = prefix;
     }
 
     public String getAzureAccountName() {
@@ -87,7 +77,7 @@ public class AzureBlobStoreConfig extends BlobStoreConfig {
         if(prefix==null){
             return String.format("container: %s", container);
         } else {
-            return String.format("container: %s prefix: %s", container, prefix);
+            return String.format("container: %s ", container, prefix);
         }
     }
 
