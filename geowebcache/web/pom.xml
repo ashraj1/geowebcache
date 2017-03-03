@@ -86,6 +86,11 @@
     </dependency>
     <dependency>
       <groupId>org.geowebcache</groupId>
+      <artifactId>gwc-azure-blob</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.geowebcache</groupId>
       <artifactId>gwc-sqlite</artifactId>
       <version>${project.version}</version>
     </dependency>
