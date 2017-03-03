@@ -18,6 +18,8 @@ import static com.google.common.base.Preconditions.checkState;
 import com.microsoft.azure.storage.*;
 import com.microsoft.azure.storage.blob.*;
 
+import javax.annotation.Nullable;
+
 /**
  * Created by jocollin on 27/02/2017.
  */
@@ -27,32 +29,43 @@ public class AzureBlobStoreConfig extends BlobStoreConfig {
 
     private String container;
 
+    private String prefix;
+
     private String azureAccountName;
 
     private String azureAccountKey;
 
     public String getContainer() {
-        return this.container;
+        return container;
     }
 
     public void setContainer(String container) {
         this.container = container;
     }
 
-    public String getAzureAccountName() {
-        return this.azureAccountName;
+    @Nullable
+    public String getPrefix() {
+        return prefix;
     }
 
-    public void setAzureAccountName(String accountName) {
-        this.azureAccountName = accountName;
+    public void setPrefix(String prefix) {
+        this.prefix = prefix;
+    }
+
+    public String getAzureAccountName() {
+        return azureAccountName;
+    }
+
+    public void setAzureAccountName(String azureAccountName) {
+        this.azureAccountName = azureAccountName;
     }
 
     public String getAzureAccountKey() {
-        return this.azureAccountKey;
+        return azureAccountKey;
     }
 
-    public void setAzureAccountKey(String accountKey) {
-        this.azureAccountKey = accountKey;
+    public void setAzureAccountKey(String azureAccountName) {
+        this.azureAccountKey = azureAccountName;
     }
 
     @Override
@@ -77,7 +90,7 @@ public class AzureBlobStoreConfig extends BlobStoreConfig {
         if(prefix==null){
             return String.format("container: %s", container);
         } else {
-            return String.format("container: %s ", container, prefix);
+            return String.format("container: %s prefix: %s", container, prefix);
         }
     }
 
