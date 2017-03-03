@@ -1,11 +1,12 @@
 package org.geowebcache.azure;
 
+import org.geowebcache.config.XMLConfigurationProvider;
+
 import com.google.common.base.Strings;
 import com.thoughtworks.xstream.XStream;
 import com.thoughtworks.xstream.converters.SingleValueConverter;
 import com.thoughtworks.xstream.converters.basic.BooleanConverter;
 import com.thoughtworks.xstream.converters.basic.IntConverter;
-import org.geowebcache.config.XMLConfigurationProvider;
 
 public class AzureBlobStoreConfigProvider implements XMLConfigurationProvider {
 

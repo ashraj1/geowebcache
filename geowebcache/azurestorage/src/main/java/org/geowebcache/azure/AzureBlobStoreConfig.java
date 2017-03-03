@@ -64,8 +64,8 @@ public class AzureBlobStoreConfig extends BlobStoreConfig {
         return azureAccountKey;
     }
 
-    public void setAzureAccountKey(String azureAccountName) {
-        this.azureAccountKey = azureAccountName;
+    public void setAzureAccountKey(String azureAccountKey) {
+        this.azureAccountKey = azureAccountKey;
     }
 
     @Override
