@@ -27,7 +27,7 @@ public class AzureBlobStoreConfig extends BlobStoreConfig {
 
     static Log log = LogFactory.getLog(AzureBlobStoreConfig.class);
 
-    private String container;
+    private String blobContainer;
 
     private String prefix;
 
@@ -36,11 +36,11 @@ public class AzureBlobStoreConfig extends BlobStoreConfig {
     private String azureAccountKey;
 
     public String getContainer() {
-        return container;
+        return blobContainer;
     }
 
     public void setContainer(String container) {
-        this.container = container;
+        this.blobContainer = container;
     }
 
     @Nullable
